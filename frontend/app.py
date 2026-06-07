@@ -2,6 +2,7 @@ import streamlit as st
 import pickle
 import numpy as np
 import os
+import tensorflow as tf
 
 # --- 1. PAGE CONFIGURATION ---
 st.set_page_config(page_title="Network Anomaly Detector", page_icon="🛡️", layout="centered")
@@ -12,44 +13,33 @@ RF_MODEL_PATH = os.path.join(BASE_DIR, '..', 'backend', 'best_rf_model.pkl')
 CNN_MODEL_PATH = os.path.join(BASE_DIR, '..', 'backend', 'best_cnn_model.h5')
 SCALER_PATH = os.path.join(BASE_DIR, '..', 'backend', 'scaler.pkl')
 
-# --- 3. LOAD ASSETS WITH VERSION BYPASS ---
+# --- 3. LOAD MODELS & SCALER ---
 @st.cache_resource
 def load_assets():
-    # Load Random Forest (Yeh hamesha safely load hoga)
+    # Load Random Forest
     with open(RF_MODEL_PATH, 'rb') as m_file:
         rf_model = pickle.load(m_file)
-    
     # Load Scaler
     with open(SCALER_PATH, 'rb') as s_file:
         scaler = pickle.load(s_file)
-    
-    # Try loading CNN safely
-    cnn_model = None
-    try:
-        import tensorflow as tf
-        cnn_model = tf.keras.models.load_model(CNN_MODEL_PATH)
-    except Exception as e:
-        # If version mismatch happens locally, it won't crash the app
-        pass
-        
+    # Load CNN
+    cnn_model = tf.keras.models.load_model(CNN_MODEL_PATH)
     return rf_model, cnn_model, scaler
 
-rf_model, cnn_model, scaler = load_assets()
-
-# Dynamic Sidebar Configuration based on what loaded successfully
-if cnn_model is not None:
+try:
+    rf_model, cnn_model, scaler = load_assets()
     st.sidebar.success("✅ ML (Random Forest) & DL (CNN) Models Loaded!")
-    model_options = ["Random Forest (ML)", "CNN (Deep Learning)"]
-else:
-    st.sidebar.warning("⚠️ Running in ML Mode (CNN version mismatch locally)")
-    model_options = ["Random Forest (ML)"]
+except Exception as e:
+    st.sidebar.error(f"❌ Error loading assets: {e}")
+    st.stop()
 
 # --- 4. APP USER INTERFACE (UI) ---
 st.title("🛡️ Hybrid Network Intrusion & Anomaly Detection System")
 st.write("Toggle between Machine Learning (Random Forest) and Deep Learning (CNN) to detect malicious traffic.")
 st.markdown("---")
 
-selected_model = st.sidebar.selectbox("🤖 Choose Architecture / Model:", model_options)
+# Model Selection Dropdown
+selected_model = st.sidebar.selectbox("🤖 Choose Architecture / Model:", ["Random Forest (ML)", "CNN (Deep Learning)"])
 
 st.subheader("📊 Traffic Features Input")
 col1, col2 = st.columns(2)
@@ -82,8 +72,7 @@ if st.button("🚀 Analyze Traffic", type="primary"):
         prediction = rf_model.predict(scaled_inputs)[0]
         confidence = rf_model.predict_proba(scaled_inputs)[0][prediction] * 100
     
-    elif selected_model == "CNN (Deep Learning)" and cnn_model is not None:
-        import tensorflow as tf
+    elif selected_model == "CNN (Deep Learning)":
         cnn_inputs = scaled_inputs.reshape((scaled_inputs.shape[0], scaled_inputs.shape[1], 1))
         prob = cnn_model.predict(cnn_inputs).flatten()[0]
         
